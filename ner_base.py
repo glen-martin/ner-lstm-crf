@@ -1,9 +1,17 @@
-import tensorflow as tf
-import keras
-
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+
+from tensorflow.keras.models import load_model
+
+from tensorflow.keras import Model, Input
+from tensorflow.keras.layers import LSTM, Embedding, Dense, TimeDistributed, Dropout, Bidirectional
+from keras_contrib.layers import CRF
+
+from sklearn_crfsuite.metrics import flat_classification_report
+from sklearn.model_selection import train_test_split
+from keras.utils import to_categorical
+from keras.preprocessing.sequence import pad_sequences
 
 from sentencegetter import SentenceGetter
 
@@ -11,16 +19,12 @@ model_name = 'ner-lstm-crf'
 
 
 def extract_tflite_model():
-    tf.reset_default_graph()
-    converter = tf.lite.TFLiteConverter.from_keras_model_file(model_name + '.h5',
-                                                              custom_objects=create_custom_objects())
+    tensorflow.reset_default_graph()
+    converter = tensorflow.lite.TFLiteConverter.from_keras_model_file(model_name + '.h5',
+                                                                      custom_objects=create_custom_objects())
     tflite_model = converter.convert()
     open(model_name + '.tflite', 'wb').write(tflite_model)
     print('Model converted successfully!')
-
-
-from keras_contrib.layers import CRF
-from keras.models import load_model
 
 
 def create_custom_objects():
@@ -48,10 +52,6 @@ def load_keras_model(path):
 
 
 def build_model():
-    from keras.models import Model, Input
-    from keras.layers import LSTM, Embedding, Dense, TimeDistributed, Dropout, Bidirectional
-    from keras_contrib.layers import CRF
-
     # Model definition
     input = Input(shape=(MAX_LEN,))
     model = Embedding(input_dim=n_words + 2, output_dim=EMBEDDING,  # n_words + 2 (PAD & UNK)
@@ -75,7 +75,6 @@ def train_model(model, X_tr, X_te, y_tr, y_te):
     pred_cat = model.predict(X_te)
     pred = np.argmax(pred_cat, axis=-1)
     y_te_true = np.argmax(y_te, -1)
-    from sklearn_crfsuite.metrics import flat_classification_report
 
     # Convert the index to tag
     pred_tag = [[idx2tag[i] for i in row] for row in pred]
@@ -138,8 +137,6 @@ idx2tag = {i: w for w, i in tag2idx.items()}
 print("The word Obama is identified by the index: {}".format(word2idx["Obama"]))
 print("The labels B-geo(which defines Geopraphical Enitities) is identified by the index: {}".format(tag2idx["B-geo"]))
 
-from keras.preprocessing.sequence import pad_sequences
-
 # Convert each sentence from list of Token to list of word_index
 X = [[word2idx[w[0]] for w in s] for s in sentences]
 # Padding each sentence to have the same lenght
@@ -150,12 +147,8 @@ y = [[tag2idx[w[2]] for w in s] for s in sentences]
 # Padding each sentence to have the same lenght
 y = pad_sequences(maxlen=MAX_LEN, sequences=y, padding="post", value=tag2idx["PAD"])
 
-from keras.utils import to_categorical
-
 # One-Hot encode
 y = [to_categorical(i, num_classes=n_tags + 1) for i in y]  # n_tags+1(PAD)
-
-from sklearn.model_selection import train_test_split
 
 X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.1)
 print(X_tr.shape, X_te.shape, np.array(y_tr).shape, np.array(y_te).shape)
