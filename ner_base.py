@@ -1,54 +1,58 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import os
+
+os.environ['USE_TF_KERAS'] = '1'
+
+import tensorflow
 
 from tensorflow.keras.models import load_model
 
 from tensorflow.keras import Model, Input
 from tensorflow.keras.layers import LSTM, Embedding, Dense, TimeDistributed, Dropout, Bidirectional
+
 from keras_contrib.layers import CRF
 
 from sklearn_crfsuite.metrics import flat_classification_report
 from sklearn.model_selection import train_test_split
-from keras.utils import to_categorical
-from keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.preprocessing.sequence import pad_sequences
 
 from sentencegetter import SentenceGetter
 
 model_name = 'ner-lstm-crf'
 
 
-def extract_tflite_model():
-    tensorflow.reset_default_graph()
-    converter = tensorflow.lite.TFLiteConverter.from_keras_model_file(model_name + '.h5',
-                                                                      custom_objects=create_custom_objects())
+def extract_tflite_model(model):
+    converter = tensorflow.lite.TFLiteConverter.from_keras_model(model)
+    converter.allow_custom_ops = True
     tflite_model = converter.convert()
     open(model_name + '.tflite', 'wb').write(tflite_model)
     print('Model converted successfully!')
 
 
-def create_custom_objects():
-    instanceHolder = {"instance": None}
+# def create_custom_objects():
+#     instanceHolder = {"instance": None}
+#
+#     class ClassWrapper(CRF):
+#         def __init__(self, *args, **kwargs):
+#             instanceHolder["instance"] = self
+#             super(ClassWrapper, self).__init__(*args, **kwargs)
+#
+#     def loss(*args):
+#         method = getattr(instanceHolder["instance"], "loss_function")
+#         return method(*args)
+#
+#     def accuracy(*args):
+#         method = getattr(instanceHolder["instance"], "accuracy")
+#         return method(*args)
+#
+#     return {"ClassWrapper": ClassWrapper, "CRF": ClassWrapper, "loss": loss, "accuracy": accuracy}
 
-    class ClassWrapper(CRF):
-        def __init__(self, *args, **kwargs):
-            instanceHolder["instance"] = self
-            super(ClassWrapper, self).__init__(*args, **kwargs)
 
-    def loss(*args):
-        method = getattr(instanceHolder["instance"], "loss_function")
-        return method(*args)
-
-    def accuracy(*args):
-        method = getattr(instanceHolder["instance"], "accuracy")
-        return method(*args)
-
-    return {"ClassWrapper": ClassWrapper, "CRF": ClassWrapper, "loss": loss, "accuracy": accuracy}
-
-
-def load_keras_model(path):
-    model = load_model(path, custom_objects=create_custom_objects())
-    return model
+# def load_keras_model(path):
+#     model = load_model(path, custom_objects=create_custom_objects())
+#     return model
 
 
 def build_model():
@@ -59,11 +63,14 @@ def build_model():
     model = Bidirectional(LSTM(units=50, return_sequences=True,
                                recurrent_dropout=0.1))(model)  # variational biLSTM
     model = TimeDistributed(Dense(50, activation="relu"))(model)  # a dense layer as suggested by neuralNer
-    crf = CRF(n_tags + 1)  # CRF layer, n_tags+1(PAD)
-    out = crf(model)  # output
 
+    out = Dense(n_tags + 1, activation="relu")(model)
+    # crf = CRF(n_tags + 1)  # CRF layer, n_tags+1(PAD)
+    # out = crf(model)  # output
+    #
     model = Model(input, out)
-    model.compile(optimizer="rmsprop", loss=crf.loss_function, metrics=[crf.accuracy])
+    model.compile(optimizer="rmsprop", loss='categorical_crossentropy',
+                  metrics=['accuracy'])
 
     model.summary()
     return model
@@ -159,4 +166,4 @@ print('Raw Label: ', ' '.join([w[2] for w in sentences[0]]))
 model = build_model()
 train_model(model, X_tr, X_te, y_tr, y_te)
 model.save(model_name + '.h5')
-extract_tflite_model()
+extract_tflite_model(model)
