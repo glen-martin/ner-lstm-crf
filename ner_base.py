@@ -2,16 +2,12 @@ import pandas as pd
 import numpy as np
 import os
 
+from utils import extract_tflite_save_model
+
 os.environ['USE_TF_KERAS'] = '1'
 
-import tensorflow
-
-from tensorflow.keras.models import load_model
-
 from tensorflow.keras import Model, Input
-from tensorflow.keras.layers import LSTM, Embedding, Dense, TimeDistributed, Dropout, Bidirectional
-
-from keras_contrib.layers import CRF
+from tensorflow.keras.layers import LSTM, Embedding, Dense, TimeDistributed, Bidirectional
 
 from sklearn_crfsuite.metrics import flat_classification_report
 from sklearn.model_selection import train_test_split
@@ -21,15 +17,6 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 from sentencegetter import SentenceGetter
 
 model_name = 'ner-lstm-crf'
-
-
-def extract_tflite_model(model):
-    converter = tensorflow.lite.TFLiteConverter.from_keras_model(model)
-    converter.allow_custom_ops = True
-    tflite_model = converter.convert()
-    open(model_name + '.tflite', 'wb').write(tflite_model)
-    print('Model converted successfully!')
-
 
 # def create_custom_objects():
 #     instanceHolder = {"instance": None}
@@ -62,9 +49,8 @@ def build_model():
                       input_length=MAX_LEN)(input)  # default: 20-dim embedding
     model = Bidirectional(LSTM(units=50, return_sequences=True,
                                recurrent_dropout=0.1))(model)  # variational biLSTM
-    model = TimeDistributed(Dense(50, activation="relu"))(model)  # a dense layer as suggested by neuralNer
+    out = TimeDistributed(Dense(n_tags + 1, activation="relu"))(model)  # a dense layer as suggested by neuralNer
 
-    out = Dense(n_tags + 1, activation="relu")(model)
     # crf = CRF(n_tags + 1)  # CRF layer, n_tags+1(PAD)
     # out = crf(model)  # output
     #
@@ -76,12 +62,12 @@ def build_model():
     return model
 
 
-def train_model(model, X_tr, X_te, y_tr, y_te):
-    history = model.fit(X_tr, np.array(y_tr), batch_size=BATCH_SIZE, epochs=EPOCHS, validation_split=0.1, verbose=2)
+def train_model(l_model, l_x_tr, l_x_te, l_y_tr, l_y_te):
+    history = l_model.fit(l_x_tr, np.array(l_y_tr), batch_size=BATCH_SIZE, epochs=EPOCHS, validation_split=0.1, verbose=2)
     # Eval
-    pred_cat = model.predict(X_te)
+    pred_cat = l_model.predict(l_x_te)
     pred = np.argmax(pred_cat, axis=-1)
-    y_te_true = np.argmax(y_te, -1)
+    y_te_true = np.argmax(l_y_te, -1)
 
     # Convert the index to tag
     pred_tag = [[idx2tag[i] for i in row] for row in pred]
@@ -91,7 +77,7 @@ def train_model(model, X_tr, X_te, y_tr, y_te):
     print(report)
 
 
-BATCH_SIZE = 512  # Number of examples used in each iteration
+BATCH_SIZE = 32  # Number of examples used in each iteration
 EPOCHS = 1  # Number of passes through entire dataset
 MAX_LEN = 80  # Max length of review (in words)
 EMBEDDING = 40  # Dimension of word embedding vector
@@ -166,4 +152,4 @@ print('Raw Label: ', ' '.join([w[2] for w in sentences[0]]))
 model = build_model()
 train_model(model, X_tr, X_te, y_tr, y_te)
 model.save(model_name + '.h5')
-extract_tflite_model(model)
+extract_tflite_save_model(model)

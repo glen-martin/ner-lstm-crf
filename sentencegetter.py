@@ -22,3 +22,4 @@ class SentenceGetter(object):
             return s
         except:
             return None
+
